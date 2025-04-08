@@ -363,6 +363,7 @@ app.post('/whatsapp', async (req, res) => {
 
     // 🔄 Envoyer le message à l’assistant
     const response = await interactWithAssistant(userMessage, from);
+    console.log("🧠 Réponse de l'assistant :", response);
     const { text, images } = response;
 
     // 📤 Répondre via l'API WhatsApp Cloud
@@ -389,6 +390,8 @@ app.post('/whatsapp', async (req, res) => {
     if (images && images.length > 0) {
       for (const url of images) {
         if (url) {
+          console.log("📤 Envoi de l’image :", url);
+          
           await axios.post(
             apiUrl,
             {
