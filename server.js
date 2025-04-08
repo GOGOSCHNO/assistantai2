@@ -173,7 +173,7 @@ async function pollForCompletion(threadId, runId) {
             
               const toolOutputs = [{
                 tool_call_id: toolCall.id,
-                output: await getImageUrl(params.imageCode)  // 💡 retourne soit le JSON, soit " "
+                output: JSON.stringify(await getImageUrl(params.imageCode))
               }];
             
               await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
@@ -312,13 +312,13 @@ async function getImageUrl(imageCode) {
 
     if (!image) {
       console.warn(`⚠️ Aucune image trouvée pour le code : ${imageCode}`);
-      return " "; // 🔁 On retourne une chaîne vide (fallback propre)
+      return { imageUrl: "" };
     }
 
-    return JSON.stringify({ imageUrl: image.url });
+    return { imageUrl: image.url };
   } catch (error) {
     console.error("❌ Erreur récupération URL image:", error);
-    return " "; // 🔁 En cas d'erreur, on retourne aussi une chaîne vide
+    return { imageUrl: "" };
   }
 }
 
