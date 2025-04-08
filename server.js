@@ -275,15 +275,8 @@ async function fetchThreadMessages(threadId) {
     // Récupération des images issues du Function Calling
     const toolMessages = messagesResponse.data.filter(msg => msg.role === 'tool');
     const toolImageUrls = toolMessages
-      .map(msg => {
-        try {
-          console.log("🛠️ Message tool brut :", msg.content[0].text.value);
-          return JSON.parse(msg.content[0].text.value).imageUrl;
-        } catch {
-          return null;
-        }
-      })
-      .filter(url => url != null);
+      .map(msg => msg.content?.[0]?.text?.value)
+      .filter(url => url && url.startsWith('http'));
 
     const images = [...markdownImageUrls, ...toolImageUrls];
 
