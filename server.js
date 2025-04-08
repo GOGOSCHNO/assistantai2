@@ -170,12 +170,13 @@ async function pollForCompletion(threadId, runId) {
 
             if (toolCall.function.name === "get_image_url") {
               console.log("🖼️ Demande d'URL image reçue:", params);
-            
+              const imageUrl = await getImageUrl(params.imageCode);
+
               const toolOutputs = [{
                 tool_call_id: toolCall.id,
-                output: JSON.stringify((await getImageUrl(params.imageCode)).imageUrl)
+                output: JSON.stringify({ imageUrl })
               }];
-            
+
               await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
                 tool_outputs: toolOutputs
               });
@@ -309,16 +310,10 @@ async function fetchThreadMessages(threadId) {
 async function getImageUrl(imageCode) {
   try {
     const image = await db.collection("images").findOne({ _id: imageCode });
-
-    if (!image) {
-      console.warn(`⚠️ Aucune image trouvée pour le code : ${imageCode}`);
-      return { imageUrl: "" };
-    }
-
-    return { imageUrl: image.url };
+    return image ? image.url : null;
   } catch (error) {
-    console.error("❌ Erreur récupération URL image:", error);
-    return { imageUrl: "" };
+    console.error("Erreur récupération URL image:", error);
+    return null;
   }
 }
 
