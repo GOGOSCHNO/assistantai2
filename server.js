@@ -277,6 +277,7 @@ async function fetchThreadMessages(threadId) {
     const toolImageUrls = toolMessages
       .map(msg => {
         try {
+          console.log("🛠️ Message tool brut :", msg.content[0].text.value);
           return JSON.parse(msg.content[0].text.value).imageUrl;
         } catch {
           return null;
