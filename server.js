@@ -176,7 +176,7 @@ async function pollForCompletion(threadId, runId) {
                 tool_call_id: toolCall.id,
                 output: JSON.stringify({ imageUrl })
               }];
-
+              console.log("📤 Output envoyé à OpenAI :", JSON.stringify(toolOutputs, null, 2));
               await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
                 tool_outputs: toolOutputs
               });
