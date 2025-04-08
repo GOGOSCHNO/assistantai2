@@ -154,52 +154,60 @@ async function pollForCompletion(threadId, runId) {
           return;
         }
 
-        if (runStatus.status === 'requires_action' &&
-            runStatus.required_action?.submit_tool_outputs?.tool_calls) {
+        if (
+          runStatus.status === 'requires_action' &&
+          runStatus.required_action?.submit_tool_outputs?.tool_calls
+        ) {
           const toolCalls = runStatus.required_action.submit_tool_outputs.tool_calls;
+          const toolOutputs = [];
 
           for (const toolCall of toolCalls) {
+            const { function: fn, id } = toolCall;
+
+            if (fn.name !== "get_image_url") {
+              console.warn(`⚠️ Fonction non gérée (hors MVP): ${fn.name}`);
+              continue;
+            }
+
             let params;
             try {
-              params = JSON.parse(toolCall.function.arguments);
+              params = JSON.parse(fn.arguments);
             } catch (error) {
               console.error("❌ Erreur en parsant les arguments JSON:", error);
               reject(error);
               return;
             }
 
-            if (toolCall.function.name === "get_image_url") {
-              console.log("🖼️ Demande d'URL image reçue:", params);
-              const imageUrl = await getImageUrl(params.imageCode);
+            console.log("🖼️ Demande d'URL image reçue:", params);
+            const imageUrl = await getImageUrl(params.imageCode);
+            console.log(`✅ URL trouvée pour "${params.imageCode}" :`, imageUrl);
 
-              const toolOutputs = [{
-                tool_call_id: toolCall.id,
-                output: JSON.stringify(imageUrl)
-              }];
-              console.log("📤 Output envoyé à OpenAI :", JSON.stringify(toolOutputs, null, 2));
-              await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
-                tool_outputs: toolOutputs
-              });
-            
-              setTimeout(checkRun, 500);
-              return;
-            } else {
-              console.warn(`⚠️ Fonction non gérée (hors MVP): ${toolCall.function.name}`);
-              setTimeout(checkRun, 500);
-              return;
-            }
-          }
-        } else {
-          elapsedTime += interval;
-          if (elapsedTime >= timeoutLimit) {
-            console.error("⏳ Timeout (80s), annulation du run...");
-            await openai.beta.threads.runs.cancel(threadId, runId);
-            reject(new Error("Run annulé après 80s sans réponse."));
-            return;
+            toolOutputs.push({
+              tool_call_id: id,
+              output: JSON.stringify(imageUrl)
+            });
           }
 
-          setTimeout(checkRun, interval);
+          if (toolOutputs.length > 0) {
+            console.log("📤 Output envoyé à OpenAI :", JSON.stringify(toolOutputs, null, 2));
+            await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
+              tool_outputs: toolOutputs
+            });
+          }
+
+          setTimeout(checkRun, 500);
+          return;
         }
+
+        elapsedTime += interval;
+        if (elapsedTime >= timeoutLimit) {
+          console.error("⏳ Timeout (80s), annulation du run...");
+          await openai.beta.threads.runs.cancel(threadId, runId);
+          reject(new Error("Run annulé après 80s sans réponse."));
+          return;
+        }
+
+        setTimeout(checkRun, interval);
 
       } catch (error) {
         console.error("Erreur dans pollForCompletion:", error);
