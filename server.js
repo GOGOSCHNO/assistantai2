@@ -173,7 +173,7 @@ async function pollForCompletion(threadId, runId) {
             
               const toolOutputs = [{
                 tool_call_id: toolCall.id,
-                output: JSON.stringify(await getImageUrl(params.imageCode))
+                output: JSON.stringify((await getImageUrl(params.imageCode)).imageUrl)
               }];
             
               await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
