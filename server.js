@@ -310,9 +310,16 @@ async function fetchThreadMessages(threadId) {
 async function getImageUrl(imageCode) {
   try {
     const image = await db.collection("images").findOne({ _id: imageCode });
+
+    if (image && image.url) {
+      console.log(`✅ URL trouvée pour le code "${imageCode}" : ${image.url}`);
+    } else {
+      console.warn(`⚠️ Aucune URL trouvée pour le code "${imageCode}".`);
+    }
+
     return image ? image.url : null;
   } catch (error) {
-    console.error("Erreur récupération URL image:", error);
+    console.error("❌ Erreur récupération URL image:", error);
     return null;
   }
 }
