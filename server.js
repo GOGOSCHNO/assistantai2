@@ -8,6 +8,7 @@ const OpenAI = require("openai");
 const { MongoClient } = require('mongodb');
 const twilio = require('twilio');
 const axios = require('axios');
+const { google } = require('googleapis'); // Peut être supprimé
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -134,6 +135,158 @@ async function interactWithAssistant(userMessage, userNumber) {
       throw error;
     }
   }  
+async function initGoogleCalendarClient() {
+    try {
+      const serviceAccountJson = process.env.SERVICE_ACCOUNT_KEY; 
+      if (!serviceAccountJson) {
+        console.error("SERVICE_ACCOUNT_KEY n'est pas défini en variable d'env.");
+        return;
+      }
+      const key = JSON.parse(serviceAccountJson);
+      console.log("Compte de service :", key.client_email);
+  
+      const client = new google.auth.JWT(
+        key.client_email,
+        null,
+        key.private_key,
+        ['https://www.googleapis.com/auth/calendar']
+      );
+      
+      await client.authorize();
+      calendar = google.calendar({ version: 'v3', auth: client });
+      console.log('✅ Client Google Calendar initialisé');
+    } catch (error) {
+      console.error("❌ Erreur d'init du client Google Calendar :", error);
+    }
+  }
+
+  async function listCalendars() {
+    try {
+      const res = await calendar.calendarList.list();
+      console.log('Calendriers visibles par la service account :');
+      (res.data.items || []).forEach(cal => {
+        console.log(`- ID: ${cal.id}, Summary: ${cal.summary}`);
+      });
+    } catch (err) {
+      console.error("Erreur listCalendars:", err);
+    }
+  }
+  
+  async function startCalendar() {
+    await initGoogleCalendarClient();  // on attend l'init
+    if (calendar) {
+      await listCalendars();           // maintenant, calendar est défini
+    }
+  }
+  
+  // Appeler une seule fois :
+  startCalendar();
+
+  async function createAppointment(params) {
+    // Vérifier si le client Google Calendar est déjà initialisé
+    if (!calendar) {
+      try {
+        const serviceAccountJson = process.env.SERVICE_ACCOUNT_KEY;
+        if (!serviceAccountJson) {
+          console.error("SERVICE_ACCOUNT_KEY n'est pas défini en variable d'env.");
+          return { success: false, message: "Service account non configuré." };
+        }
+        const key = JSON.parse(serviceAccountJson);
+        console.log("Compte de service :", key.client_email);
+  
+        // Création du client JWT
+        const client = new google.auth.JWT(
+          key.client_email,
+          null,
+          key.private_key,
+          ['https://www.googleapis.com/auth/calendar']
+        );
+  
+        // Authentification
+        await client.authorize();
+  
+        // Initialisation du client Calendar et affectation à la variable globale
+        calendar = google.calendar({ version: 'v3', auth: client });
+        console.log('✅ Client Google Calendar initialisé dans createAppointment');
+      } catch (error) {
+        console.error("❌ Erreur lors de l'initialisation de Google Calendar :", error);
+        return { success: false, message: "Erreur d'initialisation de Calendar" };
+      }
+    }
+  
+    // À partir d'ici, calendar est garanti d'être défini.
+    try {
+      // Définir l'événement à créer
+      const event = {
+        summary: `Cita de ${params.customerName}`,
+        description: `Téléphone: ${params.phoneNumber}\nService: ${params.service}`,
+        start: {
+          dateTime: `${params.date}T${params.startTime}:00`, // Ajout des secondes si besoin
+          timeZone: 'America/Bogota',
+        },
+        end: {
+          dateTime: `${params.date}T${params.endTime}:00`,
+          timeZone: 'America/Bogota',
+        },
+      };  
+  
+      // Insertion de l'événement dans l'agenda de diegodfr75@gmail.com
+      const calendarRes = await calendar.events.insert({
+        calendarId: 'diegodfr75@gmail.com',
+        resource: event,
+      });
+  
+      const eventId = calendarRes.data.id;
+      console.log('Événement créé sur Google Calendar, eventId =', eventId);
+  
+      // Insertion en base de données (MongoDB) avec l'eventId
+      await db.collection('appointments').insertOne({
+        customerName: params.customerName,
+        phoneNumber: params.phoneNumber,
+        date: params.date,
+        startTime: params.startTime,
+        endTime: params.endTime,
+        service: params.service,
+        googleEventId: eventId
+      });
+  
+      return { success: true, message: 'Cita creada en Calendar y Mongo', eventId };
+    } catch (error) {
+      console.error("Erreur lors de la création de l'événement :", error);
+      return { success: false, message: 'No se pudo crear la cita.' };
+    }
+  }
+  
+  
+  async function cancelAppointment(phoneNumber) {
+    try {
+      // 1) Trouver le RDV en base
+      const appointment = await db.collection('appointments')
+                                  .findOne({ phonenumber: phoneNumber });
+      if (!appointment) {
+        console.log("Aucun RDV trouvé pour ce phoneNumber:", phoneNumber);
+        return false;
+      }
+  
+      // 2) Supprimer l’event côté Google si googleEventId existe
+      if (appointment.googleEventId) {
+        await calendar.events.delete({
+          calendarId: 'diegodfr75@gmail.com',
+          eventId: appointment.googleEventId
+        });
+        console.log("Événement GoogleCalendar supprimé:", appointment.googleEventId);
+      } else {
+        console.log("Aucun googleEventId stocké, on ne supprime rien sur Google.");
+      }
+  
+      // 3) Supprimer en base
+      const result = await db.collection('appointments').deleteOne({ _id: appointment._id });
+      return result.deletedCount > 0;
+    } catch (error) {
+      console.error("Erreur cancelAppointment:", error);
+      return false;
+    }
+  }
 
 // Vérification du statut d'un run
 async function pollForCompletion(threadId, runId) {
@@ -163,13 +316,8 @@ async function pollForCompletion(threadId, runId) {
 
           for (const toolCall of toolCalls) {
             const { function: fn, id } = toolCall;
-
-            if (fn.name !== "get_image_url") {
-              console.warn(`⚠️ Fonction non gérée (hors MVP): ${fn.name}`);
-              continue;
-            }
-
             let params;
+
             try {
               params = JSON.parse(fn.arguments);
             } catch (error) {
@@ -178,18 +326,64 @@ async function pollForCompletion(threadId, runId) {
               return;
             }
 
-            console.log("🖼️ Demande d'URL image reçue:", params);
-            const imageUrl = await getImageUrl(params.imageCode);
-            console.log(`✅ URL trouvée pour "${params.imageCode}" :`, imageUrl);
+            switch (fn.name) {
+              case "getAppointments": {
+                const appointments = await db.collection("appointments")
+                                            .find({ date: params.date })
+                                            .toArray();
 
-            toolOutputs.push({
-              tool_call_id: id,
-              output: JSON.stringify(imageUrl)
-            });
+                toolOutputs.push({
+                  tool_call_id: id,
+                  output: JSON.stringify(appointments),
+                });
+                break;
+              }
+
+              case "cancelAppointment": {
+                const wasDeleted = await cancelAppointment(params.phoneNumber);
+
+                toolOutputs.push({
+                  tool_call_id: id,
+                  output: JSON.stringify({
+                    success: wasDeleted,
+                    message: wasDeleted
+                      ? "La cita ha sido cancelada."
+                      : "No se encontró ninguna cita para ese número."
+                  })
+                });
+                break;
+              }
+
+              case "createAppointment": {
+                const result = await createAppointment(params);
+
+                toolOutputs.push({
+                  tool_call_id: id,
+                  output: JSON.stringify({
+                    success: result.success,
+                    message: result.message
+                  })
+                });
+                break;
+              }
+
+              case "get_image_url": {
+                console.log("🖼️ Demande d'URL image reçue:", params);
+                const imageUrl = await getImageUrl(params.imageCode);
+
+                toolOutputs.push({
+                  tool_call_id: id,
+                  output: JSON.stringify({ imageUrl })
+                });
+                break;
+              }
+
+              default:
+                console.warn(`⚠️ Fonction inconnue (non gérée) : ${fn.name}`);
+            }
           }
 
           if (toolOutputs.length > 0) {
-            console.log("📤 Output envoyé à OpenAI :", JSON.stringify(toolOutputs, null, 2));
             await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
               tool_outputs: toolOutputs
             });
@@ -218,7 +412,6 @@ async function pollForCompletion(threadId, runId) {
     checkRun();
   });
 }
-
 // Récupérer les messages d'un thread
 async function fetchThreadMessages(threadId) {
   try {
