@@ -88,12 +88,15 @@ async function interactWithAssistant(userMessage, userNumber) {
   
     try {
       const threadId = await getOrCreateThreadId(userNumber);
-      const currentDateTime = new Date().toLocaleString('es-ES', { timeZone: 'America/Bogota' });
+      const dateISO = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Bogota' });
+      const heure = new Date().toLocaleTimeString('es-ES', { timeZone: 'America/Bogota' });
+
+      console.log("📅 Date envoyée à l'assistant (ISO) :", dateISO);
   
       // Envoi du message utilisateur à OpenAI
       await openai.beta.threads.messages.create(threadId, {
         role: "user",
-        content: `Mensaje del cliente: "${userMessage}". Nota: El número WhatsApp del cliente es ${userNumber}. Fecha y hora del mensaje: ${currentDateTime}`
+        content: `Mensaje del cliente: "${userMessage}". Nota: El número WhatsApp del cliente es ${userNumber}. Fecha actual: ${dateISO} Hora actual: ${heure}`
       });
   
       // Création d'un nouveau "run" pour générer la réponse
