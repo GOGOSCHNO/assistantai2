@@ -291,7 +291,45 @@ async function initGoogleCalendarClient() {
     }
   }
 
-// Vérification du statut d'un run
+async function enviarAlertaComerciante(estado, numeroCliente) {
+  const numeroComerciante = "573009016472"; // numéro fixe
+  const apiUrl = `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  const headers = {
+    Authorization: `Bearer ${process.env.WHATSAPP_CLOUD_API_TOKEN}`,
+    "Content-Type": "application/json"
+  };
+
+  const messageData = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: numeroComerciante,
+    type: "template",
+    template: {
+      name: "teste",  // le modèle que tu as validé
+      language: {
+        policy: "deterministic",
+        code: "es"
+      },
+      components: [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: estado },        // correspond à {{1}}
+            { type: "text", text: numeroCliente }  // correspond à {{2}}
+          ]
+        }
+      ]
+    }
+  };
+
+  try {
+    await axios.post(apiUrl, messageData, { headers });
+    console.log("✅ Alerta enviada al comerciante:", numeroComerciante);
+  } catch (err) {
+    console.error("❌ Error al enviar alerta al comerciante:", err.response?.data || err.message);
+  }
+}
+
 async function pollForCompletion(threadId, runId) {
   return new Promise((resolve, reject) => {
     const interval = 2000;
@@ -381,6 +419,17 @@ async function pollForCompletion(threadId, runId) {
                 break;
               }
 
+              case "notificar_comerciante": {
+                console.log("📣 Function calling détectée : notificar_comerciante");
+                const { estado, numero_cliente } = params;
+                await enviarAlertaComerciante(estado, numero_cliente);
+                toolOutputs.push({
+                  tool_call_id: id,
+                  output: JSON.stringify({ success: true })
+                });
+                break;
+              }
+
               default:
                 console.warn(`⚠️ Fonction inconnue (non gérée) : ${fn.name}`);
             }
@@ -415,6 +464,7 @@ async function pollForCompletion(threadId, runId) {
     checkRun();
   });
 }
+
 // Récupérer les messages d'un thread
 async function fetchThreadMessages(threadId) {
   try {
