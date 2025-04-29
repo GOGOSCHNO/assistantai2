@@ -259,17 +259,17 @@ async function startCalendar() {
   async function cancelAppointment(phoneNumber) {
     try {
       // 1) Trouver le RDV en base
-      const appointment = await db.collection('appointments')
-                                  .findOne({ phonenumber: phoneNumber });
+      const appointment = await db.collection("appointments")
+          .findOne({ phoneNumber: params.phoneNumber, calendarId: params.calendarId });
       if (!appointment) {
         console.log("Aucun RDV trouvé pour ce phoneNumber:", phoneNumber);
         return false;
       }
   
       // 2) Supprimer l’event côté Google si googleEventId existe
-      if (appointment.googleEventId) {
+      if (appointment && appointment.googleEventId) {
         await calendar.events.delete({
-          calendarId: 'diegodfr75@gmail.com',
+          calendarId: params.calendarId,
           eventId: appointment.googleEventId
         });
         console.log("Événement GoogleCalendar supprimé:", appointment.googleEventId);
@@ -365,8 +365,8 @@ async function pollForCompletion(threadId, runId) {
             switch (fn.name) {
               case "getAppointments": {
                 const appointments = await db.collection("appointments")
-                                            .find({ date: params.date })
-                                            .toArray();
+                  .find({ date: params.date, calendarId: params.calendarId })
+                  .toArray();
 
                 toolOutputs.push({
                   tool_call_id: id,
