@@ -230,7 +230,7 @@ async function startCalendar() {
   
       // Insertion de l'événement dans l'agenda de diegodfr75@gmail.com
       const calendarRes = await calendar.events.insert({
-        calendarId: 'diegodfr75@gmail.com',
+        calendarId: params.calendarId,
         resource: event,
       });
   
