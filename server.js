@@ -163,18 +163,20 @@ async function initGoogleCalendarClient() {
     }
   }
 
-  async function listCalendars() {
-    try {
-      const res = await calendar.calendarList.list();
-      console.log('Calendriers visibles par la service account :');
-      (res.data.items || []).forEach(cal => {
-        console.log(`- ID: ${cal.id}, Summary: ${cal.summary}`);
-      });
-    } catch (err) {
-      console.error("Erreur listCalendars:", err);
+  async function startCalendar() {
+    await initGoogleCalendarClient();  // on attend l'init
+    if (calendar) {
+      try {
+        const res = await calendar.calendarList.list();
+        console.log('\n📅 Agendas disponibles :');
+        (res.data.items || []).forEach(cal => {
+          console.log(`- ID: ${cal.id}, Summary: ${cal.summary}`);
+        });
+      } catch (err) {
+        console.error("❌ Erreur listCalendars():", err);
+      }
     }
   }
-  
   async function startCalendar() {
     await initGoogleCalendarClient();  // on attend l'init
     if (calendar) {
