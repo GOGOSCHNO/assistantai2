@@ -364,14 +364,39 @@ async function pollForCompletion(threadId, runId) {
 
             switch (fn.name) {
               case "getAppointments": {
-                const appointments = await db.collection("appointments")
-                  .find({ date: params.date, calendarId: params.calendarId })
-                  .toArray();
-
-                toolOutputs.push({
-                  tool_call_id: id,
-                  output: JSON.stringify(appointments),
-                });
+                if (!calendar) {
+                  await initGoogleCalendarClient(); // au cas où non initialisé
+                }
+              
+                try {
+                  const startOfDay = `${params.date}T00:00:00-05:00`; // Bogota timezone
+                  const endOfDay = `${params.date}T23:59:59-05:00`;
+              
+                  const res = await calendar.events.list({
+                    calendarId: params.calendarId,
+                    timeMin: new Date(startOfDay).toISOString(),
+                    timeMax: new Date(endOfDay).toISOString(),
+                    singleEvents: true,
+                    orderBy: 'startTime',
+                  });
+              
+                  const appointments = res.data.items.map(event => ({
+                    start: event.start.dateTime,
+                    end: event.end.dateTime,
+                    summary: event.summary,
+                  }));
+              
+                  toolOutputs.push({
+                    tool_call_id: id,
+                    output: JSON.stringify(appointments),
+                  });
+                } catch (error) {
+                  console.error("❌ Erreur lors de la récupération des RDV Google Calendar :", error);
+                  toolOutputs.push({
+                    tool_call_id: id,
+                    output: JSON.stringify({ error: "Erreur Google Calendar" }),
+                  });
+                }
                 break;
               }
 
